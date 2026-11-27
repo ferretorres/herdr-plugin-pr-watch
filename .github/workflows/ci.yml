@@ -1,0 +1,27 @@
+name: ci
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # 3.9 is the oldest supported version and the one macOS ships as /usr/bin/python3;
+          # current Ubuntu runners no longer offer it.
+          - {os: macos-latest, python: '3.9'}
+          - {os: macos-latest, python: '3.13'}
+          - {os: ubuntu-latest, python: '3.10'}
+          - {os: ubuntu-latest, python: '3.13'}
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python }}
+      - run: python test_pr_watch.py

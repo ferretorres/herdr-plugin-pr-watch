@@ -1,0 +1,18 @@
+id = "ferretorres.pr-watch"
+name = "pr-watch"
+version = "0.2.0"
+description = "Which of your open GitHub PRs need something from you: reply, fix a conflict, review, or nothing"
+min_herdr_version = "0.9.1"
+
+[[panes]]
+id = "watch"
+title = "PR watch"
+command = ["python3", "pr_watch.py", "--tui", "--watch", "300"]
+placement = "split"
+
+[[actions]]
+id = "open"
+title = "PR watch"
+description = "Open the PR watch pane"
+command = ["herdr", "plugin", "pane", "open", "--plugin", "ferretorres.pr-watch", "--entrypoint", "watch"]
+contexts = ["global"]
