@@ -164,6 +164,9 @@ only added under the same version.
 ```
 
 - `needs_you` is true when at least one step has `"you": true`.
+- `errors` lists the repositories that could not be read this time (renamed, no access, a GitHub error), each
+  with the reason. The other repositories still show; the full-screen view names the failed ones in its footer.
+  Only when no repository can be read does the run fail.
 - Step kinds that need you: `reply`, `answer-threads`, `address-changes`, `fix-checks`, `update-base`, `review`,
   `re-review`, `merge`.
 - Step kinds that only inform: `waiting`, `pull`, `hold`, `resolve`, `posted`, `snoozed`.

@@ -1,6 +1,6 @@
 id = "ferretorres.pr-watch"
 name = "pr-watch"
-version = "0.2.1"
+version = "0.2.2"
 description = "Which of your open GitHub PRs need something from you: reply, fix a conflict, review, or nothing"
 min_herdr_version = "0.9.1"
 platforms = ["linux", "macos"]

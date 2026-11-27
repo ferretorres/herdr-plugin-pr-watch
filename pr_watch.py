@@ -531,7 +531,7 @@ def plan(pr, rebase, me):
     return any(st["you"] for st in steps), " · ".join(st["text"] for st in steps), ask
 
 
-def report(prs, me, rebases, only=None):
+def report(prs, me, rebases, only=None, errors=()):
     """The decisions as plain data for scripts and agents (schema pr-watch/1, see README)."""
     out = []
     for pr in sorted(prs, key=lambda p: (p.repo, p.number)):
@@ -552,7 +552,7 @@ def report(prs, me, rebases, only=None):
     return {"schema": "pr-watch/1", "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
             "viewer": me, "repos": sorted({p.repo for p in prs}),
             "counts": {"you": sum(p["needs_you"] for p in out), "notyou": sum(not p["needs_you"] for p in out)},
-            "prs": out}
+            "prs": out, "errors": list(errors)}
 
 
 # Display settings. Each can come from a flag, then config.json ("display"), then these defaults.
@@ -885,13 +885,22 @@ def run(repo, args):
 
 
 def fetch_all(repos, args):
-    prs, rebases, fresh, me = [], {}, 0, ""
+    """Read every repository. One that can't be read (renamed, no access) is reported in `errors` and the
+    others still show; only when none can be read is it an error."""
+    prs, rebases, fresh, me, errors = [], {}, 0, "", []
     for repo in repos:
-        p, me, f, r = run(repo, args)
+        try:
+            p, who, f, r = run(repo, args)
+        except (GitHubError, subprocess.TimeoutExpired) as e:
+            errors.append(f"{repo}: {e}")
+            continue
+        me = who or me
         prs, fresh = prs + p, fresh + f
         rebases.update(r)
+    if errors and len(errors) == len(repos):
+        raise GitHubError("; ".join(errors))
     agent_links(prs)
-    return prs, me, fresh, rebases
+    return prs, me, fresh, rebases, errors
 
 
 ANSI = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]|\x1b\]8;;[^\x1b]*\x1b\\")
@@ -1022,7 +1031,8 @@ def tui(args, d, repos, cfg):
         while True:
             try:
                 state["data"] = fetch_all(repos, args)
-                state["error"] = ""
+                failed = state["data"][4]
+                state["error"] = f"⚠ not shown: {'; '.join(failed)}" if failed else ""
                 if state["data"][2]:
                     sys.stdout.write("\a")
                     if not args.no_notify:
@@ -1048,7 +1058,7 @@ def tui(args, d, repos, cfg):
             if state["data"] is None:
                 lines, meta = ["PR watch · reading GitHub…"], [None]
             else:
-                prs, me, _, rebases = state["data"]
+                prs, me, _, rebases, _ = state["data"]
                 lines, meta = build(prs, me, rebases, not args.no_colour, cols, d, sel)
             rows_idx = [i for i, m in enumerate(meta) if m and m[0] == "row"]
             specs_now = {t: layout(d["columns"], widths_for(d, t), cols - 2) for t in ("you", "notyou")}
@@ -1195,12 +1205,12 @@ def tui(args, d, repos, cfg):
                     else:
                         flash = f"no herdr agent found for #{pr.number}"
                 elif tok in ("Y", "A") and state["data"]:
-                    prs_, me_, _, reb_ = state["data"]
+                    prs_, me_, _, reb_, _ = state["data"]
                     text_ = plain_report(prs_, me_, reb_, "you" if tok == "Y" else None)
                     what_ = "the YOU section" if tok == "Y" else "everything"
                     flash = f"copied {what_} to the clipboard" if copy_to_clipboard(text_) else "copy failed"
                 elif tok == "t" and state["data"]:
-                    prs_, me_, _, reb_ = state["data"]
+                    prs_, me_, _, reb_, _ = state["data"]
                     if not text_view(out, fd, plain_report(prs_, me_, reb_), mouse_on):
                         return
                 elif tok in ("y", "u") and cur is not None:
@@ -1255,15 +1265,17 @@ def main():
         return tui(args, d, repos, cfg)
     while True:
         try:
-            prs, me, fresh, rebases = fetch_all(repos, args)
+            prs, me, fresh, rebases, failed = fetch_all(repos, args)
         except GitHubError as e:
             if not args.watch:
                 sys.exit(str(e))
             print(f"\033[2J\033[H⚠ {e} · retrying in {args.watch} s", flush=True)
             time.sleep(args.watch)
             continue
+        if failed and not args.json:
+            print("\n".join(f"⚠ not shown: {e}" for e in failed), file=sys.stderr)
         if args.json:
-            print(json.dumps(report(prs, me, rebases, args.only), indent=2))
+            print(json.dumps(report(prs, me, rebases, args.only, failed), indent=2))
         else:
             need = sum(plan(p, rebases.get((p.repo, p.number)), me)[0] for p in prs)
             if args.only:  # same filter for the text view

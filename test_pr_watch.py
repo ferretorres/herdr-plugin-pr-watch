@@ -309,4 +309,22 @@ except SystemExit as e:
     assert "No repository to watch" in str(e)
 finally:
     os.chdir(old_cwd); pr_watch.gh = old_gh
+# One repository that can't be read is reported; the others still show. All failing is an error.
+def fake_run(repo, args):
+    if repo == "o/gone":
+        raise pr_watch.GitHubError("can't read o/gone: check the name and your access")
+    return [], "me", 0, {}
+real_run, real_links = pr_watch.run, pr_watch.agent_links
+pr_watch.run, pr_watch.agent_links = fake_run, lambda prs: None
+try:
+    got = pr_watch.fetch_all(["o/ok", "o/gone"], None)
+    assert got[1] == "me" and got[4] == ["o/gone: can't read o/gone: check the name and your access"], got
+    try:
+        pr_watch.fetch_all(["o/gone"], None)
+        raise AssertionError("expected GitHubError")
+    except pr_watch.GitHubError as e:
+        assert "o/gone" in str(e)
+    assert pr_watch.report([], "me", {}, None, got[4])["errors"] == got[4]
+finally:
+    pr_watch.run, pr_watch.agent_links = real_run, real_links
 print("ok")
